@@ -17,6 +17,8 @@ cp .env.example .env      # Windows: copy .env.example .env
 python -m agent                       # 交互模式
 python -m agent -p "看看这个项目是做什么的"   # 单次任务
 python -m agent -C ../some-project    # 指定工作目录
+python -m agent --mode auto           # 写操作全自动，不逐次确认
+python -m agent --mode readonly       # 只读模式，禁止一切写操作
 ```
 
 `.env` 已被 `.gitignore` 忽略，key 不会进入仓库。
@@ -34,7 +36,12 @@ agent/
 └── tools/
     ├── base.py         工具注册表、JSON Schema 导出、dispatch 兜错
     ├── paths.py        路径沙箱
-    └── filesystem.py   read_file / list_dir
+    ├── permissions.py  三档权限模式（ask/auto/readonly）与用户确认闸门
+    ├── diffutil.py     统一 diff 生成，供确认预览和工具返回值复用
+    ├── filesystem.py   read_file / list_dir
+    ├── editing.py      write_file / edit_file（写前展示 diff 并请求确认）
+    ├── search.py       grep（纯 Python 实现，跨平台）
+    └── shell.py        run_command（高危命令硬拦截 + 用户确认）
 ```
 
 设计决策的取舍记录见 [DESIGN.md](DESIGN.md)。
@@ -42,7 +49,6 @@ agent/
 ## 进度
 
 - [x] 核心循环、流式解析、工具注册表、路径沙箱
-- [x] read_file / list_dir
-- [ ] write_file / edit_file / grep / run_command
-- [ ] 危险操作的用户确认与权限模式
-- [ ] 上下文压缩
+- [x] read_file / list_dir / write_file / edit_file / grep / run_command
+- [x] 危险操作的用户确认与权限模式（ask / auto / readonly）
+- [ ] 上下文压缩（超阈值时摘要化早期消息）

@@ -65,8 +65,52 @@
 Python 在中文 Windows 上 `open()` 的默认编码是 GBK，读 UTF-8 源码会直接抛
 `UnicodeDecodeError`。所有文件读写都显式传 `encoding="utf-8"`。
 
+## 10. `edit_file` 用唯一字符串替换，不用行号定位
+
+行号会因为上下文陈旧（模型是几步之前读的文件，中间可能被别的调用改过）而
+错位；整段重写又太浪费输出 token、容易在长文件里漏掉不该动的内容。
+唯一字符串匹配失败时（找不到 / 不唯一）直接把原因说清楚让模型重新
+`read_file`，这比"改错地方"更安全——错误是可见可恢复的，静默改错不是。
+
+## 11. 三档权限模式 + 确认闸门放在工具 handler 内部，不放在 dispatch() 里统一拦
+
+`write_file` / `edit_file` / `run_command` 各自知道"要不要确认"该给用户看
+什么（diff 还是命令原文），所以由它们自己在执行前调用
+`ctx.permissions.request()`，而不是在 `tools/base.py::dispatch()` 里
+用一个通用的 `requires_approval` 布尔位统一弹一个内容空洞的确认框。
+`requires_approval` 这个字段目前仅用于工具自描述（未来做只读/写入的
+并发划分时会用到），实际的闸门调用权在各工具自己手上。
+
+三档模式：
+- `ask`（默认）—— 每次破坏性操作都问，用户可以选"这个工具本次会话总是允许"；
+- `auto`—— 全自动，跳过确认，但 `run_command` 的硬性黑名单仍然生效——
+  auto 不等于无底线；
+- `readonly`—— 直接拒绝任何写操作，返回值会告诉模型"现在只能分析，别再试"。
+
+没有交互通道时（`Permissions.asker is None`）一律拒绝（fail closed），
+不会因为忘记接 UI 就悄悄放行破坏性操作。
+
+## 12. `run_command` 的高危命令用正则黑名单硬拦截，不受权限模式影响
+
+`auto` 模式是为了演示流畅，不是为了放弃底线：`rm -rf /`、`git push --force`、
+`git reset --hard`、格式化磁盘之类命令即使在 `auto` 模式下也会被直接拒绝，
+不会触达用户确认这一步——这类操作没有"确认后执行"的价值，唯一正确的处理
+就是拒绝并让模型换一种做法。黑名单不追求穷尽（不可能穷尽），只挡最常见、
+最难挽回的几类，属于"防灾难性误操作"而不是"防恶意注入"。
+
+## 13. Windows 上显式起 `powershell.exe`，不能依赖 `shell=True`
+
+写这个工具时踩了一个坑：`subprocess.run(cmd, shell=True)` 在 Windows 上
+调用的是 `%COMSPEC%`，也就是 `cmd.exe`，不是 PowerShell。如果工具描述里
+告诉模型"这里能用 PowerShell"，模型写出的 `$PSVersionTable`、`Get-ChildItem`
+之类语法在 cmd.exe 下全部报错，而且报错信息（"不是内部或外部命令"）
+不会让模型意识到问题出在 shell 选错了，只会反复重试同样会失败的写法。
+现在 Windows 下改为显式拼 `["powershell", "-NoProfile", "-NonInteractive",
+"-Command", command]` 并关闭 `shell=True`；其它平台仍用 `shell=True`
+默认调用的 `/bin/sh`。工具描述的措辞必须和实际行为对齐，这类"文档说的和
+代码做的不一样"的偏差在纯文本协议里很难被发现，因为它不会报 Python 异常，
+只会让 agent 在特定平台上莫名其妙地反复失败。
+
 ## 待办 / 待权衡
 
 - 上下文超长时的压缩策略：摘要化早期消息 vs. 丢弃老的 tool result
-- `edit_file` 用唯一字符串替换还是行号定位
-- `run_command` 的确认机制：白名单 / 每次确认 / 权限模式
