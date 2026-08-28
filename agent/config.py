@@ -5,8 +5,10 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+
+from .tools.permissions import PermissionMode
 
 DEFAULT_BASE_URL = "https://api.deepseek.com"
 DEFAULT_MODEL = "deepseek-v4-flash"
@@ -45,8 +47,11 @@ class Config:
     request_timeout: float = 120.0
     max_retries: int = 3
 
+    # ask=写操作逐次确认（默认）、auto=全自动、readonly=拒绝一切写操作
+    permission_mode: PermissionMode = field(default=PermissionMode.ASK)
+
     @classmethod
-    def from_env(cls, workspace: Path | None = None) -> "Config":
+    def from_env(cls, workspace: Path | None = None, permission_mode: PermissionMode | None = None) -> "Config":
         ws = (workspace or Path.cwd()).resolve()
         load_dotenv(ws / ".env")
 
@@ -63,4 +68,5 @@ class Config:
             workspace=ws,
             base_url=os.environ.get("DEEPSEEK_BASE_URL", DEFAULT_BASE_URL),
             model=os.environ.get("DEEPSEEK_MODEL", DEFAULT_MODEL),
+            permission_mode=permission_mode or PermissionMode.ASK,
         )

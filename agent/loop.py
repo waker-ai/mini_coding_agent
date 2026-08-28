@@ -18,7 +18,7 @@ from .config import Config
 from .history import History
 from .llm import AssistantMessage, LLMClient, LLMError
 from .prompts import build_system_prompt
-from .tools import ToolContext, ToolResult, dispatch, get_schemas
+from .tools import ApprovalRequest, Permissions, ToolContext, ToolResult, dispatch, get_schemas
 from .tools.filesystem import list_dir
 
 
@@ -31,6 +31,10 @@ class Reporter:
     def on_tool_end(self, name: str, result: ToolResult) -> None: ...
     def on_notice(self, message: str) -> None: ...
     def on_error(self, message: str) -> None: ...
+
+    def ask_approval(self, request: ApprovalRequest) -> str:
+        """默认拒绝一切（fail closed）。具体 UI 必须覆盖这个方法。"""
+        return "n"
 
 
 @dataclass(slots=True)
@@ -45,7 +49,8 @@ class Agent:
         self.config = config
         self.reporter = reporter
         self.client = LLMClient(config)
-        self.ctx = ToolContext(workspace=config.workspace)
+        self.permissions = Permissions(mode=config.permission_mode, asker=reporter.ask_approval)
+        self.ctx = ToolContext(workspace=config.workspace, permissions=self.permissions)
         self.history = History(
             system_prompt=build_system_prompt(config.workspace, self._overview()),
             max_tool_output=config.max_tool_output,

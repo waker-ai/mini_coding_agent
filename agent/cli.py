@@ -5,14 +5,17 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 from rich.console import Console
 from rich.markdown import Markdown
+from rich.panel import Panel
+from rich.syntax import Syntax
 
 from .config import Config
 from .loop import Agent, Reporter, TurnStats
-from .tools import REGISTRY, ToolResult, format_call
+from .tools import REGISTRY, ApprovalRequest, PermissionMode, ToolResult, format_call
 
 BANNER = "mini coding agent · /help 查看命令 · /exit 退出"
 
@@ -34,8 +37,6 @@ class ConsoleReporter(Reporter):
             self._streaming = False
 
     def on_tool_start(self, name: str, arguments: str) -> None:
-        import json
-
         try:
             args = json.loads(arguments) if arguments.strip() else {}
         except json.JSONDecodeError:
@@ -53,6 +54,24 @@ class ConsoleReporter(Reporter):
     def on_error(self, message: str) -> None:
         self.console.print(f"[bold red]✗ {message}[/]")
 
+    def ask_approval(self, request: ApprovalRequest) -> str:
+        """写操作 / 命令执行前的人在回路确认。运行在主线程，会阻塞直到用户输入。"""
+        self.console.print()
+        if request.tool == "run_command":
+            body = Syntax(request.detail, "bash", word_wrap=True)
+        else:
+            body = Syntax(request.detail, "diff", word_wrap=True)
+        self.console.print(Panel(body, title=request.title, border_style="yellow"))
+
+        try:
+            answer = self.console.input(
+                "[yellow]允许执行？[/] [bold](y)[/]是 / (n)否 / (a)本次会话总是允许该工具  "
+            ).strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            self.console.print("[yellow]! 未输入，默认拒绝[/]")
+            return "n"
+        return answer
+
 
 def _print_help(console: Console) -> None:
     console.print(
@@ -61,6 +80,7 @@ def _print_help(console: Console) -> None:
             "- `/help` 显示本帮助\n"
             "- `/tools` 列出已注册的工具\n"
             "- `/clear` 清空对话历史（保留系统提示）\n"
+            "- `/mode` 查看或切换权限模式（ask / auto / readonly）\n"
             "- `/exit` 退出\n"
         )
     )
@@ -82,14 +102,23 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="agent", description="一个极简编程智能体")
     parser.add_argument("-C", "--workspace", default=".", help="agent 的工作目录，默认当前目录")
     parser.add_argument("-p", "--prompt", help="单次任务模式：执行完这条指令就退出")
+    parser.add_argument(
+        "--mode",
+        choices=[m.value for m in PermissionMode],
+        default=PermissionMode.ASK.value,
+        help="权限模式：ask（默认，写操作逐次确认）/ auto（全自动）/ readonly（禁止写操作）",
+    )
     args = parser.parse_args(argv)
 
     console = Console()
-    config = Config.from_env(Path(args.workspace))
+    config = Config.from_env(Path(args.workspace), permission_mode=PermissionMode(args.mode))
     agent = Agent(config, ConsoleReporter(console))
 
     console.print(f"[bold]{BANNER}[/]")
-    console.print(f"[dim]模型 {config.model} · 工作目录 {config.workspace}[/]\n")
+    console.print(
+        f"[dim]模型 {config.model} · 工作目录 {config.workspace} · "
+        f"权限模式 {config.permission_mode.value}[/]\n"
+    )
 
     if args.prompt:
         _print_stats(console, agent.run_turn(args.prompt))
@@ -116,6 +145,18 @@ def main(argv: list[str] | None = None) -> int:
         if user_input == "/clear":
             agent.history.clear()
             console.print("[dim]历史已清空[/]")
+            continue
+        if user_input.startswith("/mode"):
+            parts = user_input.split(maxsplit=1)
+            if len(parts) == 1:
+                console.print(f"[dim]当前权限模式：{agent.permissions.mode.value}[/]")
+            else:
+                choice = parts[1].strip().lower()
+                try:
+                    agent.permissions.mode = PermissionMode(choice)
+                    console.print(f"[dim]已切换到 {choice} 模式[/]")
+                except ValueError:
+                    console.print(f"[red]未知模式：{choice}（可选 ask / auto / readonly）[/]")
             continue
 
         try:
