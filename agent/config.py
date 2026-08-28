@@ -53,9 +53,26 @@ class Config:
     # ask=写操作逐次确认（默认）、auto=全自动、readonly=拒绝一切写操作
     permission_mode: PermissionMode = field(default=PermissionMode.ASK)
 
+    # from_env 是否自动创建了 workspace 目录，供 cli.py 决定要不要提示用户
+    workspace_created: bool = field(default=False)
+
     @classmethod
     def from_env(cls, workspace: Path | None = None, permission_mode: PermissionMode | None = None) -> "Config":
         ws = (workspace or Path.cwd()).resolve()
+
+        # workspace 不存在时，list_dir 等工具会在运行时反复报错——而且报错文案
+        # 天生说不清楚，因为 display() 把"等于 workspace 自身"的路径显示成
+        # 相对路径 "."，模型看到"目录不存在：."完全猜不出问题出在 workspace
+        # 本身。与其让模型在运行时摸索着撞出这个坑，不如在启动时一次性校验掉。
+        # 自动创建而不是直接报错退出，是为了和 write_file 已有的
+        # mkdir(parents=True) 行为保持一致——不然用户会遇到"这次报错、
+        # 下次却因为文件已经建出来而正常"的不一致体验。
+        if ws.exists() and not ws.is_dir():
+            raise SystemExit(f"工作目录不是一个目录：{ws}")
+        workspace_created = not ws.exists()
+        if workspace_created:
+            ws.mkdir(parents=True, exist_ok=True)
+
         # .env 存的是「这个 agent 装置」的凭据，不是「被操作项目」的凭据，
         # 所以按 agent 自身仓库根目录找，而不是按 --workspace 指向的目标项目找——
         # 否则 -C 到别的项目跑一次就得在那边也放一份 key，且很容易忘记 .gitignore。
@@ -75,4 +92,5 @@ class Config:
             base_url=os.environ.get("DEEPSEEK_BASE_URL", DEFAULT_BASE_URL),
             model=os.environ.get("DEEPSEEK_MODEL", DEFAULT_MODEL),
             permission_mode=permission_mode or PermissionMode.ASK,
+            workspace_created=workspace_created,
         )

@@ -116,6 +116,8 @@ def main(argv: list[str] | None = None) -> int:
     agent = Agent(config, ConsoleReporter(console))
 
     console.print(f"[bold]{BANNER}[/]")
+    if config.workspace_created:
+        console.print(f"[yellow]! 工作目录不存在，已自动创建：{config.workspace}[/]")
     console.print(
         f"[dim]模型 {config.model} · 工作目录 {config.workspace} · "
         f"权限模式 {config.permission_mode.value}[/]\n"
