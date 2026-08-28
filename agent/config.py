@@ -13,6 +13,9 @@ from .tools.permissions import PermissionMode
 DEFAULT_BASE_URL = "https://api.deepseek.com"
 DEFAULT_MODEL = "deepseek-v4-flash"
 
+# agent 包所在仓库的根目录（config.py 是 agent/config.py，上两级就是仓库根）
+PACKAGE_ROOT = Path(__file__).resolve().parent.parent
+
 
 def load_dotenv(path: Path) -> None:
     """极简 .env 解析。
@@ -53,7 +56,10 @@ class Config:
     @classmethod
     def from_env(cls, workspace: Path | None = None, permission_mode: PermissionMode | None = None) -> "Config":
         ws = (workspace or Path.cwd()).resolve()
-        load_dotenv(ws / ".env")
+        # .env 存的是「这个 agent 装置」的凭据，不是「被操作项目」的凭据，
+        # 所以按 agent 自身仓库根目录找，而不是按 --workspace 指向的目标项目找——
+        # 否则 -C 到别的项目跑一次就得在那边也放一份 key，且很容易忘记 .gitignore。
+        load_dotenv(PACKAGE_ROOT / ".env")
 
         api_key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
         if not api_key:

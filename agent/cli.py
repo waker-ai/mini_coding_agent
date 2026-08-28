@@ -68,8 +68,9 @@ class ConsoleReporter(Reporter):
                 "[yellow]允许执行？[/] [bold](y)[/]是 / (n)否 / (a)本次会话总是允许该工具  "
             ).strip().lower()
         except (EOFError, KeyboardInterrupt):
-            self.console.print("[yellow]! 未输入，默认拒绝[/]")
+            self.console.print("\n[yellow]! 未输入，默认拒绝[/]")
             return "n"
+        self.console.print()  # 补一个换行，避免后续的工具结果摘要跟提示行粘在一起
         return answer
 
 
