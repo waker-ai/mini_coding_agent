@@ -16,7 +16,10 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
+
+if TYPE_CHECKING:
+    from .permissions import Permissions
 
 
 class ToolError(Exception):
@@ -25,9 +28,10 @@ class ToolError(Exception):
 
 @dataclass(slots=True)
 class ToolContext:
-    """工具执行时能看到的环境。目前只有工作目录，后续可挂权限模式等。"""
+    """工具执行时能看到的环境：工作目录 + 权限闸门。"""
 
     workspace: Path
+    permissions: "Permissions | None" = None
 
 
 @dataclass(slots=True)
