@@ -68,6 +68,9 @@ web/                    可选的浏览器界面（不装 fastapi 也不影响�
 ├── server.py           FastAPI + WebSocket，内含 WebReporter
 └── static/index.html   单文件前端，原生 JS，无构建步骤
 
+demo/
+└── setup_demo.py       生成/重置演示靶子（一个带真实 bug 的小项目）
+
 tests/                  37 个测试，均用桩替换 LLM，不联网不花钱
 ├── run_all.py          一次跑完全部
 ├── test_tools.py       沙箱 / 凭据防护 / 权限闸门 / dispatch 兜错
