@@ -1,2 +1,7 @@
+# 核心：agent 本体只需要这两个
 openai>=1.40.0
 rich>=13.0.0
+
+# 可选：Web 界面（python -m web）。只用终端界面的话不装也能跑
+fastapi>=0.110.0
+uvicorn>=0.27.0
