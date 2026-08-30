@@ -32,6 +32,7 @@ from typing import Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from agent.config import Config
 from agent.loop import Agent, Reporter
@@ -227,6 +228,10 @@ def list_directories(raw_path: str) -> dict[str, Any]:
 def create_app(workspace: Path, mode: PermissionMode) -> FastAPI:
     app = FastAPI(title="mini coding agent")
     state = AppState(workspace.resolve(), mode)
+
+    # 静态资源（水印图等）。注意这里托管的是本项目自带的 web/static，
+    # 与 agent 的工作目录无关，不受也不影响路径沙箱。
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     @app.get("/")
     async def index() -> FileResponse:
