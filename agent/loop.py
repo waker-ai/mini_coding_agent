@@ -107,8 +107,10 @@ class Agent:
 
             self._run_tools(message, stats)
 
-        # 出口 2：撞上步数上限。同样要给模型留一条 tool 之外的记录，
-        # 否则下一轮历史里会出现"有 tool_call 却没有结果"的空洞。
+        # 出口 2：撞上步数上限。
+        # 这里不需要往历史里补任何东西：_run_tools() 一定会在循环条件失败之前
+        # 跑完，每个 tool_call 都已经有了对应的 tool 消息，历史本身是完整的。
+        # 所以只提示用户，历史原样保留——下一轮用户追一句"继续"就能接着干。
         self.reporter.on_notice(
             f"已达到单轮步数上限（{self.config.max_steps} 步），自动停止。"
             "可以直接追加一句指令让它继续。"

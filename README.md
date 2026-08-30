@@ -66,8 +66,11 @@ web/                    可选的浏览器界面（不装 fastapi 也不影响�
 ├── server.py           FastAPI + WebSocket，内含 WebReporter
 └── static/index.html   单文件前端，原生 JS，无构建步骤
 
-tests/
-└── test_history.py     上下文压缩的切割点回归测试
+tests/                  27 个测试，均用桩替换 LLM，不联网不花钱
+├── run_all.py          一次跑完全部
+├── test_tools.py       沙箱 / 凭据防护 / 权限闸门 / dispatch 兜错
+├── test_history.py     上下文压缩的切割点
+└── test_loop.py        三层终止条件与历史一致性
 ```
 
 设计决策的取舍记录见 [DESIGN.md](DESIGN.md)。
@@ -75,11 +78,18 @@ tests/
 ## 测试
 
 ```bash
-python tests/test_history.py
+python tests/run_all.py
 ```
 
-覆盖上下文压缩的切割点逻辑——这是最容易悄悄切坏的部分：一旦切断
-tool_call 与 tool 结果的配对，请求会被服务端 400 拒绝，且报错不会指向压缩逻辑。
+27 个测试，全部不联网、不消耗 token（LLM 用桩替换）：
+
+- `test_tools.py` —— 路径沙箱、凭据文件防护、三档权限闸门、dispatch 兜错。
+  这些是"说了算数"的约束，一旦悄悄失效，后果是密钥泄露或写坏工作目录外的
+  文件，而且不会有任何报错提醒你。
+- `test_history.py` —— 上下文压缩的切割点。最容易悄悄切坏的部分：一旦切断
+  tool_call 与 tool 结果的配对，请求会被服务端 400 拒绝，且报错不指向压缩逻辑。
+- `test_loop.py` —— 三层终止条件，以及每个出口退出时历史都必须保持完整
+  （不能有孤儿 tool 消息，也不能有拿不到结果的 tool_call）。
 
 ## 进度
 
