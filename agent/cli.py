@@ -13,6 +13,7 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.syntax import Syntax
 
+from . import session as session_store
 from .config import Config
 from .loop import Agent, Reporter, TurnStats
 from .tools import REGISTRY, ApprovalRequest, PermissionMode, ToolResult, format_call
@@ -37,6 +38,10 @@ class ConsoleReporter(Reporter):
             self._streaming = False
 
     def on_tool_start(self, name: str, arguments: str) -> None:
+        # todo_write 的展示由 on_todos 负责，再打一行带长 JSON 的调用
+        # 只会刷屏，且信息完全重复
+        if name == "todo_write":
+            return
         try:
             args = json.loads(arguments) if arguments.strip() else {}
         except json.JSONDecodeError:
@@ -45,6 +50,8 @@ class ConsoleReporter(Reporter):
         self.console.print(f"[bold cyan]⏺[/] [cyan]{rendered}[/]")
 
     def on_tool_end(self, name: str, result: ToolResult) -> None:
+        if name == "todo_write" and not result.is_error:
+            return
         color = "red" if result.is_error else "dim"
         self.console.print(f"  [{color}]└ {result.summary}[/]")
 
@@ -53,6 +60,17 @@ class ConsoleReporter(Reporter):
 
     def on_error(self, message: str) -> None:
         self.console.print(f"[bold red]✗ {message}[/]")
+
+    def on_todos(self, todos: list[dict[str, str]]) -> None:
+        marks = {"pending": ("○", "dim"),
+                 "in_progress": ("◐", "yellow"),
+                 "completed": ("●", "green")}
+        done = sum(1 for t in todos if t["status"] == "completed")
+        self.console.print(f"  [bold]任务清单[/] [dim]({done}/{len(todos)})[/]")
+        for todo in todos:
+            mark, color = marks.get(todo["status"], ("○", "dim"))
+            style = "dim strike" if todo["status"] == "completed" else color
+            self.console.print(f"  [{color}]{mark}[/] [{style}]{todo['content']}[/]")
 
     def ask_approval(self, request: ApprovalRequest) -> str:
         """写操作 / 命令执行前的人在回路确认。运行在主线程，会阻塞直到用户输入。"""
@@ -83,6 +101,7 @@ def _print_help(console: Console) -> None:
             "- `/clear` 清空对话历史（保留系统提示）\n"
             "- `/mode` 查看或切换权限模式（ask / auto / readonly）\n"
             "- `/compact` 立即压缩上下文（把早期对话摘要成一条）\n"
+            "- `/resume` 恢复该工作目录上次的对话\n"
             "- `/exit` 退出\n"
         )
     )
@@ -107,6 +126,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("-C", "--workspace", default=".", help="agent 的工作目录，默认当前目录")
     parser.add_argument("-p", "--prompt", help="单次任务模式：执行完这条指令就退出")
     parser.add_argument(
+        "--resume", action="store_true", help="接着该工作目录上次的对话继续"
+    )
+    parser.add_argument(
         "--mode",
         choices=[m.value for m in PermissionMode],
         default=PermissionMode.ASK.value,
@@ -116,7 +138,7 @@ def main(argv: list[str] | None = None) -> int:
 
     console = Console()
     config = Config.from_env(Path(args.workspace), permission_mode=PermissionMode(args.mode))
-    agent = Agent(config, ConsoleReporter(console))
+    agent = Agent(config, ConsoleReporter(console), resume=args.resume)
 
     console.print(f"[bold]{BANNER}[/]")
     if config.workspace_created:
@@ -150,10 +172,15 @@ def main(argv: list[str] | None = None) -> int:
             continue
         if user_input == "/clear":
             agent.history.clear()
-            console.print("[dim]历史已清空[/]")
+            # 存档一并清掉，否则下次 --resume 又把刚清掉的历史捞回来
+            session_store.clear(config.workspace)
+            console.print("[dim]历史与存档均已清空[/]")
             continue
         if user_input == "/compact":
             agent.compact()
+            continue
+        if user_input == "/resume":
+            agent.restore_session()
             continue
         if user_input.startswith("/mode"):
             parts = user_input.split(maxsplit=1)

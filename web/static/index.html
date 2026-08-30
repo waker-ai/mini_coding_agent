@@ -187,6 +187,26 @@
     border-top: 1px solid var(--border-soft); padding-top: 9px;
   }
 
+  .todos {
+    background: var(--panel);
+    border: 1px solid var(--border-soft);
+    border-left: 3px solid var(--nju-purple-soft);
+    border-radius: 9px; padding: 11px 15px; margin-bottom: 12px;
+  }
+  .todos .head {
+    font-size: 12px; color: var(--nju-lavender);
+    letter-spacing: 1.1px; text-transform: uppercase; margin-bottom: 7px;
+  }
+  .todos .item {
+    display: flex; gap: 9px; align-items: flex-start;
+    font-size: 13.5px; padding: 2px 0;
+  }
+  .todos .item .mk { flex: none; width: 14px; }
+  .todos .pending    { color: var(--dim); }
+  .todos .in_progress { color: var(--gold); font-weight: 600; }
+  .todos .completed  { color: var(--dim); text-decoration: line-through; opacity: .72; }
+  .todos .completed .mk { color: var(--green); text-decoration: none; }
+
   .tool {
     background: var(--panel);
     border: 1px solid var(--border-soft);
@@ -294,6 +314,7 @@
     <option value="auto">auto · 全自动</option>
     <option value="readonly">readonly · 只读</option>
   </select>
+  <button id="resumeBtn" title="接着该工作目录上次的对话继续" style="display:none">继续上次</button>
   <button id="compactBtn" title="立即压缩上下文">压缩上下文</button>
 </header>
 
@@ -387,6 +408,36 @@ function renderInline(text) {
   h = h.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
   return h;
 }
+const TODO_MARKS = { pending: "\u25cb", in_progress: "\u25d0", completed: "\u25cf" };
+/* 待办清单每次都是全量覆盖，所以复用同一个卡片原地更新，
+   而不是每次更新都往消息流里追加一张新卡片——否则刷屏。 */
+let todoCard = null;
+function renderTodos(todos) {
+  if (!todoCard || !todoCard.isConnected) {
+    todoCard = document.createElement("div");
+    todoCard.className = "todos";
+  }
+  /* 每次更新都挪到末尾：清单是"当前进度"，留在原地会被后续消息滚走 */
+  stream.appendChild(todoCard);
+  const done = todos.filter((t) => t.status === "completed").length;
+  todoCard.textContent = "";
+  const head = document.createElement("div");
+  head.className = "head";
+  head.textContent = `\u4efb\u52a1\u6e05\u5355  ${done}/${todos.length}`;
+  todoCard.appendChild(head);
+  for (const t of todos) {
+    const row = document.createElement("div");
+    row.className = "item " + t.status;
+    const mk = document.createElement("span");
+    mk.className = "mk";
+    mk.textContent = TODO_MARKS[t.status] || "\u25cb";
+    row.appendChild(mk);
+    row.appendChild(document.createTextNode(t.content));
+    todoCard.appendChild(row);
+  }
+  scrollDown();
+}
+
 function fmtArgs(args) {
   return Object.entries(args || {}).map(([k, v]) => {
     let s = typeof v === "string" ? v : JSON.stringify(v);
@@ -511,6 +562,7 @@ function handle(e) {
       $("meta").textContent = `${e.model} · ${e.tools.length} 个工具`;
       $("wsPath").textContent = e.workspace;
       $("modeSel").value = e.mode;
+      $("resumeBtn").style.display = e.has_session ? "" : "none";
       loadTree();
       break;
 
@@ -531,6 +583,8 @@ function handle(e) {
       break;
 
     case "tool_start": {
+      // 清单由 todos 事件单独渲染，这里再画一张带长 JSON 的卡片纯属噪音
+      if (e.name === "todo_write") break;
       const el = document.createElement("div");
       el.className = "tool";
       el.innerHTML = `<div class="head"><span class="dot"></span>` +
@@ -544,6 +598,7 @@ function handle(e) {
     }
 
     case "tool_end":
+      if (e.name === "todo_write" && !e.is_error) break;
       if (lastTool) {
         lastTool.classList.add(e.is_error ? "fail" : "done");
         const r = document.createElement("div");
@@ -555,6 +610,7 @@ function handle(e) {
       }
       break;
 
+    case "todos": renderTodos(e.todos); break;
     case "tree_dirty": loadTree(); break;
     case "notice": addBlock("notice", "! " + e.message); break;
     case "error":  addBlock("error",  "✗ " + e.message); break;
@@ -599,6 +655,7 @@ function send() {
   const text = box.value.trim();
   if (!text || busy || !ws || ws.readyState !== 1) return;
   addBlock("user", text);
+  todoCard = null;
   ws.send(JSON.stringify({ type: "user_input", text }));
   box.value = "";
   box.style.height = "auto";
@@ -620,6 +677,10 @@ document.querySelectorAll("#overlay .foot button").forEach((btn) => {
 });
 $("modeSel").onchange = (ev) => ws.send(JSON.stringify({ type: "set_mode", mode: ev.target.value }));
 $("compactBtn").onclick = () => ws.send(JSON.stringify({ type: "compact" }));
+$("resumeBtn").onclick = () => {
+  ws.send(JSON.stringify({ type: "resume" }));
+  $("resumeBtn").style.display = "none";
+};
 
 connect();
 $("input").focus();

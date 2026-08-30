@@ -34,6 +34,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from agent import session as session_store
 from agent.config import Config
 from agent.loop import Agent, Reporter
 from agent.tools import REGISTRY, ApprovalRequest, PermissionMode
@@ -123,6 +124,9 @@ class WebReporter(Reporter):
 
     def on_error(self, message: str) -> None:
         self.emit({"type": "error", "message": message})
+
+    def on_todos(self, todos: list[dict[str, str]]) -> None:
+        self.emit({"type": "todos", "todos": todos})
 
     def ask_approval(self, request: ApprovalRequest) -> str:
         """阻塞等待浏览器的确认结果。
@@ -279,13 +283,13 @@ def create_app(workspace: Path, mode: PermissionMode) -> FastAPI:
         reporter = WebReporter(loop, queue)
         holder: dict[str, Any] = {"agent": None, "config": None}
 
-        def build_agent() -> str:
+        def build_agent(resume: bool = False) -> str:
             """按当前工作目录重建 Agent。返回空串表示成功，否则是错误信息。"""
             try:
                 config = Config.from_env(state.workspace, permission_mode=state.mode)
             except SystemExit as exc:
                 return str(exc)
-            agent = Agent(config, reporter)
+            agent = Agent(config, reporter, resume=resume)
             reporter.context_probe = lambda: (
                 agent.history.estimated_tokens(),
                 agent.history.compact_threshold,
@@ -308,6 +312,7 @@ def create_app(workspace: Path, mode: PermissionMode) -> FastAPI:
                     "model": config.model,
                     "workspace": str(config.workspace),
                     "mode": config.permission_mode.value,
+                    "has_session": session_store.load(state.workspace) is not None,
                     "tools": [
                         {"name": t.name, "description": t.description}
                         for t in REGISTRY.values()
@@ -410,6 +415,10 @@ def create_app(workspace: Path, mode: PermissionMode) -> FastAPI:
                         {"type": "workspace_changed", "workspace": str(state.workspace)}
                     )
                     await send_ready()
+
+                elif kind == "resume":
+                    if not busy():
+                        holder["agent"].restore_session()
 
                 elif kind == "compact":
                     if not busy():
