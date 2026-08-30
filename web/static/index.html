@@ -19,58 +19,65 @@
   }
   * { box-sizing: border-box; }
   body {
-    margin: 0;
-    background: var(--bg);
-    color: var(--text);
+    margin: 0; background: var(--bg); color: var(--text);
     font: 15px/1.65 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
+    height: 100vh; display: flex; flex-direction: column;
   }
   code, pre, .mono { font-family: "Cascadia Code", Consolas, "Courier New", monospace; }
 
   /* ---------- 顶栏 ---------- */
   header {
-    background: var(--panel);
-    border-bottom: 1px solid var(--border);
-    padding: 10px 18px;
-    display: flex;
-    align-items: center;
-    gap: 18px;
-    flex-wrap: wrap;
+    background: var(--panel); border-bottom: 1px solid var(--border);
+    padding: 10px 18px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
   }
   .brand { font-weight: 600; font-size: 16px; }
   .meta { color: var(--dim); font-size: 12.5px; }
   header .spacer { flex: 1; }
-  select {
+  select, button {
     background: var(--panel-2); color: var(--text);
     border: 1px solid var(--border); border-radius: 6px;
-    padding: 4px 8px; font-size: 13px;
+    padding: 5px 11px; font-size: 13px; cursor: pointer;
   }
-  button {
-    background: var(--panel-2); color: var(--text);
-    border: 1px solid var(--border); border-radius: 6px;
-    padding: 5px 12px; font-size: 13px; cursor: pointer;
-  }
-  button:hover { border-color: var(--accent); }
+  button:hover, select:hover { border-color: var(--accent); }
   button:disabled { opacity: .45; cursor: not-allowed; }
 
-  /* ---------- 上下文占用条 ---------- */
   .ctx { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--dim); }
-  .bar {
-    width: 150px; height: 7px; border-radius: 4px;
-    background: var(--panel-2); overflow: hidden;
-  }
+  .bar { width: 140px; height: 7px; border-radius: 4px; background: var(--panel-2); overflow: hidden; }
   .bar > i {
     display: block; height: 100%; width: 0%;
-    background: var(--accent);
-    transition: width .35s ease, background .35s ease;
+    background: var(--accent); transition: width .35s ease, background .35s ease;
   }
   .bar.warn > i { background: var(--yellow); }
 
-  /* ---------- 消息流 ---------- */
-  main { flex: 1; overflow-y: auto; padding: 20px 18px 8px; }
-  .stream { max-width: 900px; margin: 0 auto; }
+  /* ---------- 主体：侧栏 + 消息流 ---------- */
+  .body { flex: 1; display: flex; min-height: 0; }
+
+  aside {
+    width: 260px; flex: none; background: var(--panel);
+    border-right: 1px solid var(--border); display: flex; flex-direction: column;
+  }
+  .aside-head {
+    padding: 10px 12px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .aside-head .title { font-size: 12.5px; color: var(--dim); flex: 1; }
+  .aside-head button { padding: 3px 8px; font-size: 12px; }
+  .ws-path {
+    padding: 7px 12px; font-size: 11.5px; color: var(--dim);
+    border-bottom: 1px solid var(--border); word-break: break-all; line-height: 1.45;
+  }
+  .tree { flex: 1; overflow: auto; padding: 8px 6px 16px; font-size: 13px; }
+  .node { padding: 2px 6px; border-radius: 4px; cursor: pointer; white-space: nowrap;
+          overflow: hidden; text-overflow: ellipsis; }
+  .node:hover { background: var(--panel-2); }
+  .node.dir { color: var(--text); }
+  .node.file { color: var(--dim); }
+  .node .caret { display: inline-block; width: 12px; color: var(--dim); }
+  .children.collapsed { display: none; }
+  .tree-empty { color: var(--dim); font-size: 12.5px; padding: 10px 8px; }
+
+  main { flex: 1; overflow-y: auto; padding: 20px 18px 8px; min-width: 0; }
+  .stream { max-width: 860px; margin: 0 auto; }
   .msg { margin-bottom: 16px; }
   .msg.user {
     background: var(--panel-2); border-left: 3px solid var(--accent);
@@ -81,7 +88,6 @@
   .msg.error { color: var(--red); font-size: 13.5px; }
   .msg.stats { color: var(--dim); font-size: 12.5px; border-top: 1px dashed var(--border); padding-top: 8px; }
 
-  /* ---------- 工具卡片 ---------- */
   .tool {
     background: var(--panel); border: 1px solid var(--border);
     border-radius: 8px; padding: 9px 13px; margin-bottom: 10px;
@@ -95,21 +101,24 @@
   .tool .result { color: var(--dim); font-size: 12.5px; margin-top: 5px; padding-left: 17px; }
   .tool.fail .result { color: var(--red); }
 
-  /* ---------- 确认弹窗 ---------- */
+  /* ---------- 弹窗 ---------- */
   .overlay {
     position: fixed; inset: 0; background: rgba(0,0,0,.62);
     display: none; align-items: center; justify-content: center; padding: 24px; z-index: 10;
   }
   .overlay.show { display: flex; }
   .dialog {
-    background: var(--panel); border: 1px solid var(--yellow);
+    background: var(--panel); border: 1px solid var(--border);
     border-radius: 10px; width: min(820px, 100%); max-height: 82vh;
     display: flex; flex-direction: column;
   }
-  .dialog h3 { margin: 0; padding: 13px 17px; border-bottom: 1px solid var(--border); font-size: 15px; }
+  .dialog.warn { border-color: var(--yellow); }
+  .dialog h3 { margin: 0; padding: 13px 17px; border-bottom: 1px solid var(--border);
+               font-size: 15px; word-break: break-all; }
   .dialog .body { overflow: auto; padding: 13px 17px; }
   .dialog pre { margin: 0; font-size: 13px; line-height: 1.5; white-space: pre-wrap; word-break: break-all; }
-  .dialog .foot { padding: 12px 17px; border-top: 1px solid var(--border); display: flex; gap: 10px; justify-content: flex-end; }
+  .dialog .foot { padding: 12px 17px; border-top: 1px solid var(--border);
+                  display: flex; gap: 10px; justify-content: flex-end; align-items: center; }
   .btn-yes { border-color: var(--green); color: var(--green); }
   .btn-always { border-color: var(--accent); color: var(--accent); }
   .btn-no { border-color: var(--red); color: var(--red); }
@@ -117,16 +126,23 @@
   .diff-del { color: var(--red); }
   .diff-hunk { color: var(--accent); }
 
+  /* 目录选择器 */
+  .picker-cur { color: var(--dim); font-size: 12.5px; padding: 0 17px 10px; word-break: break-all; }
+  .picker-list { max-height: 46vh; overflow: auto; padding: 0 8px; }
+  .picker-item { padding: 6px 10px; border-radius: 5px; cursor: pointer; font-size: 13.5px; }
+  .picker-item:hover { background: var(--panel-2); }
+  .picker-item.up { color: var(--accent); }
+
   /* ---------- 输入区 ---------- */
   footer { border-top: 1px solid var(--border); background: var(--panel); padding: 12px 18px; }
-  .inputbar { max-width: 900px; margin: 0 auto; display: flex; gap: 10px; }
+  .inputbar { max-width: 860px; margin: 0 auto; display: flex; gap: 10px; }
   textarea {
     flex: 1; resize: none; background: var(--panel-2); color: var(--text);
     border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px;
     font: inherit; line-height: 1.5; max-height: 160px;
   }
   textarea:focus { outline: none; border-color: var(--accent); }
-  .hint { max-width: 900px; margin: 6px auto 0; color: var(--dim); font-size: 11.5px; }
+  .hint { max-width: 860px; margin: 6px auto 0; color: var(--dim); font-size: 11.5px; }
 </style>
 </head>
 <body>
@@ -148,7 +164,19 @@
   <button id="compactBtn" title="立即压缩上下文">压缩上下文</button>
 </header>
 
-<main><div class="stream" id="stream"></div></main>
+<div class="body">
+  <aside>
+    <div class="aside-head">
+      <span class="title">工作目录</span>
+      <button id="pickBtn" title="切换工作目录">切换</button>
+      <button id="refreshBtn" title="刷新文件树">刷新</button>
+    </div>
+    <div class="ws-path" id="wsPath">—</div>
+    <div class="tree" id="tree"></div>
+  </aside>
+
+  <main><div class="stream" id="stream"></div></main>
+</div>
 
 <footer>
   <div class="inputbar">
@@ -158,8 +186,9 @@
   <div class="hint">agent 在本机 Python 进程内运行，浏览器只是显示层</div>
 </footer>
 
+<!-- 写操作确认 -->
 <div class="overlay" id="overlay">
-  <div class="dialog">
+  <div class="dialog warn">
     <h3 id="dlgTitle">需要确认</h3>
     <div class="body"><pre id="dlgBody" class="mono"></pre></div>
     <div class="foot">
@@ -170,12 +199,36 @@
   </div>
 </div>
 
+<!-- 文件预览 -->
+<div class="overlay" id="preview">
+  <div class="dialog">
+    <h3 id="pvTitle">文件</h3>
+    <div class="body"><pre id="pvBody" class="mono"></pre></div>
+    <div class="foot"><button id="pvClose">关闭</button></div>
+  </div>
+</div>
+
+<!-- 目录选择器 -->
+<div class="overlay" id="picker">
+  <div class="dialog">
+    <h3>选择工作目录</h3>
+    <div class="picker-cur" id="pkCur"></div>
+    <div class="picker-list" id="pkList"></div>
+    <div class="foot">
+      <span class="meta spacer" style="flex:1">agent 只能读写选定目录内的文件</span>
+      <button id="pkCancel">取消</button>
+      <button id="pkChoose" class="btn-yes">选择当前目录</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const $ = (id) => document.getElementById(id);
 const stream = $("stream");
-let ws, streamingEl = null, busy = false;
+let ws, streamingEl = null, busy = false, lastTool = null;
+let pickerPath = "";
 
-/* ---------- 渲染工具 ---------- */
+/* ---------- 通用 ---------- */
 function scrollDown() {
   const main = document.querySelector("main");
   main.scrollTop = main.scrollHeight;
@@ -189,15 +242,12 @@ function addBlock(cls, text) {
   return el;
 }
 function fmtArgs(args) {
-  return Object.entries(args || {})
-    .map(([k, v]) => {
-      let s = typeof v === "string" ? v : JSON.stringify(v);
-      if (s.length > 70) s = s.slice(0, 67) + "…";
-      return k + "=" + s;
-    })
-    .join("  ");
+  return Object.entries(args || {}).map(([k, v]) => {
+    let s = typeof v === "string" ? v : JSON.stringify(v);
+    if (s.length > 70) s = s.slice(0, 67) + "…";
+    return k + "=" + s;
+  }).join("  ");
 }
-/* diff 按行首字符上色。服务端已经生成好 unified diff，这里只负责显示 */
 function renderDiff(text) {
   const frag = document.createDocumentFragment();
   for (const line of text.split("\n")) {
@@ -212,20 +262,114 @@ function renderDiff(text) {
   return frag;
 }
 
-/* ---------- 连接 ---------- */
+/* ---------- 文件树 ---------- */
+async function loadTree() {
+  const box = $("tree");
+  try {
+    const data = await (await fetch("/api/tree")).json();
+    box.textContent = "";
+    if (data.error) { box.innerHTML = `<div class="tree-empty">${data.error}</div>`; return; }
+    if (!data.children.length) { box.innerHTML = `<div class="tree-empty">（空目录）</div>`; return; }
+    box.appendChild(renderNodes(data.children, 0));
+  } catch (err) {
+    box.innerHTML = `<div class="tree-empty">读取失败</div>`;
+  }
+}
+function renderNodes(nodes, level) {
+  const frag = document.createDocumentFragment();
+  for (const node of nodes) {
+    const row = document.createElement("div");
+    row.className = "node " + node.type;
+    row.style.paddingLeft = (level * 12 + 6) + "px";
+    if (node.type === "dir") {
+      row.innerHTML = `<span class="caret">▾</span>`;
+      row.appendChild(document.createTextNode(node.name + "/"));
+      const kids = document.createElement("div");
+      kids.className = "children";
+      kids.appendChild(renderNodes(node.children || [], level + 1));
+      row.onclick = (ev) => {
+        ev.stopPropagation();
+        kids.classList.toggle("collapsed");
+        row.querySelector(".caret").textContent =
+          kids.classList.contains("collapsed") ? "▸" : "▾";
+      };
+      frag.appendChild(row);
+      frag.appendChild(kids);
+    } else {
+      row.innerHTML = `<span class="caret"></span>`;
+      row.appendChild(document.createTextNode(node.name));
+      row.onclick = (ev) => { ev.stopPropagation(); openFile(node.path); };
+      frag.appendChild(row);
+    }
+  }
+  return frag;
+}
+async function openFile(path) {
+  const data = await (await fetch("/api/file?path=" + encodeURIComponent(path))).json();
+  $("pvTitle").textContent = path;
+  $("pvBody").textContent = data.error
+    ? data.error
+    : data.content + (data.truncated ? "\n\n…（文件过大，已截断）" : "");
+  $("preview").classList.add("show");
+}
+$("pvClose").onclick = () => $("preview").classList.remove("show");
+$("refreshBtn").onclick = loadTree;
+
+/* ---------- 目录选择器 ---------- */
+async function openPicker(path) {
+  const data = await (await fetch("/api/browse?path=" + encodeURIComponent(path || ""))).json();
+  if (data.error) { alert(data.error); return; }
+  pickerPath = data.path;
+  $("pkCur").textContent = data.path || "（选择一个磁盘）";
+  $("pkChoose").disabled = !data.path;
+
+  const list = $("pkList");
+  list.textContent = "";
+  if (data.parent !== null && data.parent !== undefined) {
+    const up = document.createElement("div");
+    up.className = "picker-item up";
+    up.textContent = "⬑ 上一级";
+    up.onclick = () => openPicker(data.parent);
+    list.appendChild(up);
+  }
+  for (const d of data.dirs) {
+    const item = document.createElement("div");
+    item.className = "picker-item";
+    item.textContent = "📁 " + d.name;
+    item.onclick = () => openPicker(d.path);
+    list.appendChild(item);
+  }
+  $("picker").classList.add("show");
+}
+$("pickBtn").onclick = () => openPicker(currentWorkspace);
+$("pkCancel").onclick = () => $("picker").classList.remove("show");
+$("pkChoose").onclick = () => {
+  if (!pickerPath) return;
+  ws.send(JSON.stringify({ type: "set_workspace", path: pickerPath }));
+  $("picker").classList.remove("show");
+};
+
+/* ---------- WebSocket ---------- */
+let currentWorkspace = "";
+
 function connect() {
   ws = new WebSocket(`ws://${location.host}/ws`);
   ws.onmessage = (ev) => handle(JSON.parse(ev.data));
   ws.onclose = () => addBlock("error", "连接已断开，刷新页面可重连");
 }
 
-let lastTool = null;
-
 function handle(e) {
   switch (e.type) {
     case "ready":
-      $("meta").textContent = `${e.model} · ${e.workspace} · ${e.tools.length} 个工具`;
+      currentWorkspace = e.workspace;
+      $("meta").textContent = `${e.model} · ${e.tools.length} 个工具`;
+      $("wsPath").textContent = e.workspace;
       $("modeSel").value = e.mode;
+      loadTree();
+      break;
+
+    case "workspace_changed":
+      addBlock("notice", "! 工作目录已切换到 " + e.workspace + "，对话历史已重置");
       break;
 
     case "text":
@@ -241,9 +385,8 @@ function handle(e) {
     case "tool_start": {
       const el = document.createElement("div");
       el.className = "tool";
-      el.innerHTML =
-        `<div class="head"><span class="dot"></span>` +
-        `<span class="name"></span><span class="args"></span></div>`;
+      el.innerHTML = `<div class="head"><span class="dot"></span>` +
+                     `<span class="name"></span><span class="args"></span></div>`;
       el.querySelector(".name").textContent = e.name;
       el.querySelector(".args").textContent = fmtArgs(e.args);
       stream.appendChild(el);
@@ -264,6 +407,7 @@ function handle(e) {
       }
       break;
 
+    case "tree_dirty": loadTree(); break;
     case "notice": addBlock("notice", "! " + e.message); break;
     case "error":  addBlock("error",  "✗ " + e.message); break;
 
@@ -279,9 +423,7 @@ function handle(e) {
       $("dlgTitle").textContent = e.title;
       $("dlgBody").textContent = "";
       $("dlgBody").appendChild(
-        e.tool === "run_command"
-          ? document.createTextNode(e.detail)
-          : renderDiff(e.detail)
+        e.tool === "run_command" ? document.createTextNode(e.detail) : renderDiff(e.detail)
       );
       $("overlay").classList.add("show");
       break;
@@ -301,9 +443,9 @@ function setBusy(v) {
   busy = v;
   $("sendBtn").disabled = v;
   $("input").disabled = v;
+  $("pickBtn").disabled = v;
   if (!v) $("input").focus();
 }
-
 function send() {
   const box = $("input");
   const text = box.value.trim();
@@ -314,7 +456,6 @@ function send() {
   box.style.height = "auto";
   setBusy(true);
 }
-
 $("sendBtn").onclick = send;
 $("input").addEventListener("keydown", (ev) => {
   if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); send(); }
@@ -323,16 +464,13 @@ $("input").addEventListener("input", function () {
   this.style.height = "auto";
   this.style.height = Math.min(this.scrollHeight, 160) + "px";
 });
-
-document.querySelectorAll(".foot button").forEach((btn) => {
+document.querySelectorAll("#overlay .foot button").forEach((btn) => {
   btn.onclick = () => {
     ws.send(JSON.stringify({ type: "approval_response", answer: btn.dataset.answer }));
     $("overlay").classList.remove("show");
   };
 });
-
-$("modeSel").onchange = (ev) =>
-  ws.send(JSON.stringify({ type: "set_mode", mode: ev.target.value }));
+$("modeSel").onchange = (ev) => ws.send(JSON.stringify({ type: "set_mode", mode: ev.target.value }));
 $("compactBtn").onclick = () => ws.send(JSON.stringify({ type: "compact" }));
 
 connect();
