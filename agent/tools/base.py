@@ -28,10 +28,13 @@ class ToolError(Exception):
 
 @dataclass(slots=True)
 class ToolContext:
-    """工具执行时能看到的环境：工作目录 + 权限闸门。"""
+    """工具执行时能看到的环境：工作目录、权限闸门、待办清单。"""
 
     workspace: Path
     permissions: "Permissions | None" = None
+    # todo_write 维护的清单，以及给 UI 的变更回调（由 Agent 在构造时接上）
+    todos: list[dict[str, str]] = field(default_factory=list)
+    on_todos: Callable[[list[dict[str, str]]], None] | None = None
 
 
 @dataclass(slots=True)

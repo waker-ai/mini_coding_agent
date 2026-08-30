@@ -18,6 +18,7 @@ from .config import Config
 from .history import CompactionResult, History
 from .llm import AssistantMessage, LLMClient, LLMError
 from .prompts import build_summary_request, build_system_prompt
+from . import session as session_store
 from .tools import ApprovalRequest, Permissions, ToolContext, ToolResult, dispatch, get_schemas
 from .tools.filesystem import list_dir
 
@@ -31,6 +32,7 @@ class Reporter:
     def on_tool_end(self, name: str, result: ToolResult) -> None: ...
     def on_notice(self, message: str) -> None: ...
     def on_error(self, message: str) -> None: ...
+    def on_todos(self, todos: list[dict[str, str]]) -> None: ...
 
     def ask_approval(self, request: ApprovalRequest) -> str:
         """默认拒绝一切（fail closed）。具体 UI 必须覆盖这个方法。"""
@@ -48,18 +50,54 @@ class TurnStats:
 
 
 class Agent:
-    def __init__(self, config: Config, reporter: Reporter) -> None:
+    def __init__(self, config: Config, reporter: Reporter, resume: bool = False) -> None:
         self.config = config
         self.reporter = reporter
         self.client = LLMClient(config)
         self._last_summary_tokens = 0
         self.permissions = Permissions(mode=config.permission_mode, asker=reporter.ask_approval)
-        self.ctx = ToolContext(workspace=config.workspace, permissions=self.permissions)
+        self.ctx = ToolContext(
+            workspace=config.workspace,
+            permissions=self.permissions,
+            on_todos=reporter.on_todos,
+        )
+        # system prompt 总是按当前目录现场重建，绝不从存档恢复：
+        # 它嵌着启动那一刻的目录快照，恢复旧的会让模型拿着过期印象干活。
         self.history = History(
             system_prompt=build_system_prompt(config.workspace, self._overview()),
             max_tool_output=config.max_tool_output,
             compact_threshold=config.compact_threshold,
             keep_recent=config.keep_recent_messages,
+        )
+        if resume:
+            self.restore_session()
+        else:
+            # 不加提示的话这里是个静默的坑：做完一个长任务，随手在同一目录
+            # 跑个一次性命令，上次的历史就被这一轮的存档覆盖没了。
+            # 把它变成一次知情选择。
+            existing = session_store.load(config.workspace)
+            if existing is not None:
+                self.reporter.on_notice(
+                    f"该目录有历史会话（{session_store.describe(existing)}），"
+                    "本次将开新对话并在结束时覆盖它；要接着上次请加 --resume。"
+                )
+
+    # ---------- 会话存档 ----------
+
+    def restore_session(self) -> bool:
+        payload = session_store.load(self.config.workspace)
+        if payload is None:
+            self.reporter.on_notice("没有找到该工作目录的历史会话，将开始新对话")
+            return False
+        self.history.load_messages(payload["messages"])
+        self.reporter.on_notice(f"已恢复会话：{session_store.describe(payload)}")
+        return True
+
+    def save_session(self) -> None:
+        session_store.save(
+            self.config.workspace,
+            self.history.export_messages(),
+            self.history.total_tokens,
         )
 
     def _overview(self) -> str:
@@ -70,6 +108,14 @@ class Agent:
             return "（无法读取目录结构）"
 
     def run_turn(self, user_input: str) -> TurnStats:
+        # 存档放在 finally 里：三个出口（正常结束 / 步数上限 / 中断报错）
+        # 都要落盘，否则 Ctrl+C 一次就丢掉整轮进度。
+        try:
+            return self._run_turn(user_input)
+        finally:
+            self.save_session()
+
+    def _run_turn(self, user_input: str) -> TurnStats:
         self.history.add_user(user_input)
         stats = TurnStats()
 
