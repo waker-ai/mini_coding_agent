@@ -47,6 +47,12 @@ class Config:
     # 单条工具结果回灌给模型的字符上限，防止一次 grep 就把上下文打满
     max_tool_output: int = 20_000
 
+    # 历史估算超过这个 token 数就触发压缩。取值明显低于模型上下文窗口，
+    # 因为估算有误差，而且要给"这一轮的响应 + 接下来几个工具结果"留出余量。
+    compact_threshold: int = 40_000
+    # 压缩时至少保留最近这么多条消息不动，保证当前正在做的事不被摘要掉
+    keep_recent_messages: int = 8
+
     request_timeout: float = 120.0
     max_retries: int = 3
 
