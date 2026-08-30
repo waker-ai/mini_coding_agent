@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-SUITES = ["test_tools.py", "test_history.py", "test_loop.py"]
+SUITES = ["test_tools.py", "test_history.py", "test_loop.py", "test_session.py"]
 
 
 def main() -> int:
