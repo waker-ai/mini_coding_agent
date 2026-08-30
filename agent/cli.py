@@ -82,6 +82,7 @@ def _print_help(console: Console) -> None:
             "- `/tools` 列出已注册的工具\n"
             "- `/clear` 清空对话历史（保留系统提示）\n"
             "- `/mode` 查看或切换权限模式（ask / auto / readonly）\n"
+            "- `/compact` 立即压缩上下文（把早期对话摘要成一条）\n"
             "- `/exit` 退出\n"
         )
     )
@@ -93,10 +94,12 @@ def _print_tools(console: Console) -> None:
 
 
 def _print_stats(console: Console, stats: TurnStats) -> None:
-    console.print(
-        f"[dim]{stats.steps} 步 · {stats.tool_calls} 次工具调用 · "
-        f"{stats.tokens} tokens[/]"
+    line = (
+        f"{stats.steps} 步 · {stats.tool_calls} 次工具调用 · {stats.tokens} tokens"
     )
+    if stats.compaction_tokens:
+        line += f"（另有 {stats.compaction_tokens} tokens 用于上下文压缩）"
+    console.print(f"[dim]{line}[/]")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -148,6 +151,9 @@ def main(argv: list[str] | None = None) -> int:
         if user_input == "/clear":
             agent.history.clear()
             console.print("[dim]历史已清空[/]")
+            continue
+        if user_input == "/compact":
+            agent.compact()
             continue
         if user_input.startswith("/mode"):
             parts = user_input.split(maxsplit=1)

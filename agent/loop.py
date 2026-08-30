@@ -15,9 +15,9 @@ from pathlib import Path
 from typing import Any
 
 from .config import Config
-from .history import History
+from .history import CompactionResult, History
 from .llm import AssistantMessage, LLMClient, LLMError
-from .prompts import build_system_prompt
+from .prompts import build_summary_request, build_system_prompt
 from .tools import ApprovalRequest, Permissions, ToolContext, ToolResult, dispatch, get_schemas
 from .tools.filesystem import list_dir
 
@@ -42,6 +42,9 @@ class TurnStats:
     steps: int = 0
     tool_calls: int = 0
     tokens: int = 0
+    # 压缩时调用模型写摘要的开销，单独记账：它不属于"干活"的消耗，
+    # 但确实花了钱，混在 tokens 里会让人看不出压缩的真实成本
+    compaction_tokens: int = 0
 
 
 class Agent:
@@ -49,11 +52,14 @@ class Agent:
         self.config = config
         self.reporter = reporter
         self.client = LLMClient(config)
+        self._last_summary_tokens = 0
         self.permissions = Permissions(mode=config.permission_mode, asker=reporter.ask_approval)
         self.ctx = ToolContext(workspace=config.workspace, permissions=self.permissions)
         self.history = History(
             system_prompt=build_system_prompt(config.workspace, self._overview()),
             max_tool_output=config.max_tool_output,
+            compact_threshold=config.compact_threshold,
+            keep_recent=config.keep_recent_messages,
         )
 
     def _overview(self) -> str:
@@ -69,6 +75,11 @@ class Agent:
 
         while stats.steps < self.config.max_steps:
             stats.steps += 1
+
+            # 压缩必须放在发请求之前：等 400 报错回来就晚了，那时已经浪费了
+            # 一次往返，而且错误信息不会告诉你是上下文超了。
+            if self.history.needs_compaction():
+                self.compact(stats)
 
             try:
                 message = self.client.complete(
@@ -87,6 +98,7 @@ class Agent:
 
             stats.tokens += message.usage.get("total_tokens", 0)
             self.history.total_tokens = stats.tokens
+            self.history.note_prompt_tokens(message.usage.get("prompt_tokens", 0))
             self.history.add_assistant(message.to_api())
 
             # 出口 1：模型不再需要工具，本轮结束
@@ -102,6 +114,38 @@ class Agent:
             "可以直接追加一句指令让它继续。"
         )
         return stats
+
+    def compact(self, stats: TurnStats | None = None) -> CompactionResult:
+        """把早期对话摘要掉，腾出上下文空间。也供 /compact 手动调用。"""
+        before_tokens = self.history.estimated_tokens()
+        self._last_summary_tokens = 0
+        result = self.history.compact(self._summarize)
+        if stats is not None:
+            stats.compaction_tokens += self._last_summary_tokens
+
+        if result.compacted:
+            self.reporter.on_notice(
+                f"上下文已压缩：{result.messages_before} 条消息 → "
+                f"{result.messages_after} 条，"
+                f"约 {before_tokens} → {self.history.estimated_tokens()} tokens"
+            )
+        elif result.reason:
+            self.reporter.on_notice(f"未压缩：{result.reason}")
+        return result
+
+    def _summarize(self, messages: list[dict[str, Any]]) -> str:
+        """用模型自己给早期对话写摘要。
+
+        刻意不带 tools 参数：带上的话模型很可能"接着干活"直接发起新的工具调用，
+        而不是老老实实写摘要。这也是为什么摘要请求把对话平铺成纯文本传入。
+        """
+        response = self.client.complete(
+            messages=[{"role": "user", "content": build_summary_request(messages)}],
+            tools=None,
+            on_text=None,
+        )
+        self._last_summary_tokens = response.usage.get("total_tokens", 0)
+        return response.content
 
     def _run_tools(self, message: AssistantMessage, stats: TurnStats) -> None:
         """依次执行本轮的所有工具调用。
