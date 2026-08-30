@@ -15,7 +15,7 @@
     --nju-purple-soft:  #8E4C9E;
     --nju-lavender:     #C79BD8;   /* 强调色：紫的亮调，用于工具名等 */
 
-    --bg:          #150E1A;
+    --bg:          #12111A;
     --panel:       rgba(31, 21, 38, 0.86);
     --panel-2:     rgba(45, 31, 54, 0.88);
     --border:      #3B2A46;
@@ -46,24 +46,29 @@
   body::before {
     content: "";
     position: fixed;
-    right: -36px;
-    bottom: -28px;
-    width: min(48vw, 660px);
+    right: -24px;
+    bottom: 44px;              /* 抬高一点，避开底部输入区，别被它的半透明面板压住 */
+    width: min(56vw, 780px);
     aspect-ratio: 3 / 2;
-    background: url("/static/nju-beidalou.jpg") center 30% / cover no-repeat;
-    opacity: .20;
-    filter: saturate(.45) contrast(1.06);
-    -webkit-mask-image: radial-gradient(ellipse at 60% 60%, #000 26%, transparent 70%);
-    mask-image: radial-gradient(ellipse at 60% 60%, #000 26%, transparent 70%);
+    background: url("/static/nju-beidalou.jpg") center 32% / cover no-repeat;
+    opacity: .55;
+    /* 关键是 brightness：原图天空是亮色，直接铺上来会和浅色正文抢，
+       字压在上面读不清。压暗之后建筑的暗部轮廓仍在，亮部不再刺眼，
+       浅色文字压上去也保得住对比度。 */
+    filter: brightness(.44) saturate(.95) contrast(1.14);
+    /* 遮罩要在元素边界内就淡透，否则上边缘会留下一道可见的硬边。
+       实心核心保住建筑主体，四周充分淡出。 */
+    -webkit-mask-image: radial-gradient(ellipse at 58% 60%, #000 20%, transparent 68%);
+    mask-image: radial-gradient(ellipse at 58% 60%, #000 20%, transparent 68%);
     pointer-events: none;
     z-index: 0;
   }
-  /* 左上角一抹极淡的紫光，和右下角的水印形成对角呼应，让空页面不至于太空 */
+  /* 左上角只留一丝紫，作为呼应而非背景色——紫是点缀色，不该糊满主区域 */
   body::after {
     content: "";
     position: fixed;
     inset: 0;
-    background: radial-gradient(70% 55% at 8% 0%, rgba(99,16,110,.30) 0%, transparent 62%);
+    background: radial-gradient(52% 40% at 4% 0%, rgba(99,16,110,.14) 0%, transparent 66%);
     pointer-events: none;
     z-index: 0;
   }
@@ -74,11 +79,11 @@
   /* ---------- 顶栏 ---------- */
   header {
     background: linear-gradient(90deg,
-        rgba(67,9,75,.92) 0%, rgba(99,16,110,.72) 45%, rgba(31,21,38,.86) 100%);
+        rgba(67,9,75,.88) 0%, rgba(99,16,110,.52) 38%, rgba(26,22,36,.88) 100%);
     border-bottom: 1px solid var(--border-soft);
     padding: 11px 20px;
     display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
-    backdrop-filter: blur(6px);
+    backdrop-filter: blur(2px);
   }
   .brand {
     font-weight: 600; font-size: 16.5px; letter-spacing: .3px;
@@ -126,7 +131,7 @@
     background: var(--panel);
     border-right: 1px solid var(--border-soft);
     display: flex; flex-direction: column;
-    backdrop-filter: blur(6px);
+    backdrop-filter: blur(2px);
   }
   .aside-head {
     padding: 11px 13px; border-bottom: 1px solid var(--border-soft);
@@ -245,7 +250,7 @@
   footer {
     border-top: 1px solid var(--border-soft);
     background: var(--panel);
-    padding: 13px 20px; backdrop-filter: blur(6px);
+    padding: 13px 20px; backdrop-filter: blur(2px);
   }
   .inputbar { max-width: 860px; margin: 0 auto; display: flex; gap: 10px; }
   textarea {
