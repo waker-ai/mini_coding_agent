@@ -24,18 +24,30 @@ python -m agent --mode readonly       # 只读模式，禁止一切写操作
 交互模式下可用 `/help` 查看斜杠命令，其中 `/compact` 可手动触发上下文压缩，
 `/mode` 可随时切换权限模式。
 
+### Web 界面（可选）
+
+除终端外还提供一个浏览器界面，两者共用同一个 agent 内核：
+
+```bash
+python -m web                      # 打开 http://127.0.0.1:8000
+python -m web -C ../some-project --mode auto
+```
+
+界面上能直观看到工具调用卡片、写操作的 diff 确认框，以及一条**上下文占用进度条**
+——压缩触发时它会肉眼可见地回落。
+
 `.env` 已被 `.gitignore` 忽略，key 不会进入仓库。
 
 ## 结构
 
 ```
 agent/
-├── cli.py          终端 REPL 与渲染（rich），实现 Reporter 接口
-├── loop.py         agent 主循环：请求 → 工具 → 回灌 → 再请求；三层终止条件
-├── llm.py          DeepSeek 通信层：流式分片拼装、重试与错误归一化
-├── history.py      对话历史：消息维护、工具结果截断、上下文压缩（安全切割点）
-├── prompts.py      系统提示词构建
-├── config.py       配置与 .env 加载
+├── cli.py              终端 REPL 与渲染（rich），实现 Reporter 接口
+├── loop.py             agent 主循环：请求 → 工具 → 回灌 → 再请求；三层终止条件
+├── llm.py              DeepSeek 通信层：流式分片拼装、重试与错误归一化
+├── history.py          对话历史：消息维护、工具结果截断、上下文压缩（安全切割点）
+├── prompts.py          系统提示词与摘要提示词
+├── config.py           配置与 .env 加载
 └── tools/
     ├── base.py         工具注册表、JSON Schema 导出、dispatch 兜错
     ├── paths.py        路径沙箱
@@ -45,6 +57,13 @@ agent/
     ├── editing.py      write_file / edit_file（写前展示 diff 并请求确认）
     ├── search.py       grep（纯 Python 实现，跨平台）
     └── shell.py        run_command（高危命令硬拦截 + 用户确认）
+
+web/                    可选的浏览器界面（不装 fastapi 也不影响终端使用）
+├── server.py           FastAPI + WebSocket，内含 WebReporter
+└── static/index.html   单文件前端，原生 JS，无构建步骤
+
+tests/
+└── test_history.py     上下文压缩的切割点回归测试
 ```
 
 设计决策的取舍记录见 [DESIGN.md](DESIGN.md)。
@@ -64,3 +83,4 @@ tool_call 与 tool 结果的配对，请求会被服务端 400 拒绝，且报�
 - [x] read_file / list_dir / write_file / edit_file / grep / run_command
 - [x] 危险操作的用户确认与权限模式（ask / auto / readonly）
 - [x] 上下文压缩：超阈值时把早期对话摘要成一条，切割点保证不破坏 tool_call 配对
+- [x] Web 界面：复用 Reporter 接口，agent 内核零改动
