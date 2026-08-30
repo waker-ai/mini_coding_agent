@@ -10,7 +10,7 @@ import re
 
 from .base import ToolContext, ToolError, tool
 from .filesystem import IGNORED
-from .paths import display, resolve
+from .paths import display, is_sensitive, resolve
 
 MAX_MATCHES = 200
 MAX_FILE_BYTES = 2_000_000  # 超过约 2MB 的文件跳过，避免卡在超大日志/资源文件上
@@ -95,5 +95,9 @@ def _iter_files(root, glob_pattern: str):
         if not path.is_file():
             continue
         if any(part in IGNORED for part in path.relative_to(root).parts[:-1]):
+            continue
+        # grep 直接读文件内容，绕过了 resolve()，所以这里要单独挡一次凭据文件，
+        # 否则一句 grep 就能把 .env 里的 key 捞出来
+        if is_sensitive(path.name):
             continue
         yield path
