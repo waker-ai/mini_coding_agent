@@ -77,6 +77,24 @@ class History:
         self._last_prompt_tokens = 0
         self._chars_since_measure = 0
 
+    # ---------- 存档 ----------
+
+    def export_messages(self) -> list[dict[str, Any]]:
+        """导出可序列化的消息列表。
+
+        刻意不含 system 消息：它嵌了启动时的目录快照，恢复时必须重建，
+        照搬回来会让模型拿着过期的目录印象干活（见 session.py）。
+        """
+        return [dict(message) for message in self._messages]
+
+    def load_messages(self, messages: list[dict[str, Any]]) -> None:
+        """从存档恢复。token 计量归零重估——旧的实测值对应的是上次的历史。"""
+        self._messages = [dict(message) for message in messages]
+        self._last_prompt_tokens = 0
+        self._chars_since_measure = sum(
+            _message_chars(m) for m in [self._system, *self._messages]
+        )
+
     def _append(self, message: dict[str, Any]) -> None:
         self._messages.append(message)
         self._chars_since_measure += _message_chars(message)
