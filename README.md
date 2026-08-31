@@ -99,6 +99,16 @@ python tests/run_all.py
 - `test_session.py` —— 存档往返、system prompt 绝不被恢复、损坏存档不崩、
   不同工作目录互相隔离，以及 todo_write 的状态机校验。
 
+另有 `tests/eval_compaction.py` —— 压缩保真度的探针测试。它会真实调用
+API，所以不在 `run_all.py` 里，需要单独运行：
+
+```bash
+python tests/eval_compaction.py
+```
+
+埋入若干可检验的事实后强制触发压缩，再禁用全部工具提问，测量事实召回率。
+实测两次均为 6/6。低于 80% 会返回非零退出码。
+
 ## 进度
 
 - [x] 核心循环、流式解析、工具注册表、路径沙箱
