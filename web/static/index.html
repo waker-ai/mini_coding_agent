@@ -123,6 +123,15 @@
   }
   .bar.warn > i { background: linear-gradient(90deg, var(--gold), #F2D9A6); }
 
+  .offline {
+    display: none;
+    background: rgba(255,138,138,.14);
+    border-bottom: 1px solid rgba(255,138,138,.4);
+    color: var(--red);
+    padding: 8px 20px; font-size: 13px; text-align: center;
+  }
+  .offline.show { display: block; }
+
   /* ---------- 主体 ---------- */
   .body { flex: 1; display: flex; min-height: 0; }
 
@@ -318,6 +327,8 @@
   <button id="compactBtn" title="立即压缩上下文">压缩上下文</button>
 </header>
 
+<div id="offline" class="offline">连接已断开，请刷新页面重新连接</div>
+
 <div class="body">
   <aside>
     <div class="aside-head">
@@ -380,6 +391,7 @@
 const $ = (id) => document.getElementById(id);
 const stream = $("stream");
 let ws, streamingEl = null, streamingRaw = "", busy = false, lastTool = null;
+let wsAlive = false;
 let pickerPath = "";
 
 /* ---------- 通用 ---------- */
@@ -567,7 +579,18 @@ let currentWorkspace = "";
 function connect() {
   ws = new WebSocket(`ws://${location.host}/ws`);
   ws.onmessage = (ev) => handle(JSON.parse(ev.data));
-  ws.onclose = () => addBlock("error", "连接已断开，刷新页面可重连");
+  ws.onopen = () => {
+    wsAlive = true;
+    $("offline").classList.remove("show");
+  };
+  ws.onclose = () => {
+    /* 之前这里只加一行消息，用户滚上去就看不见了，而 send() 又是静默返回的，
+       结果就是"输入了、回车了、什么都没发生"，完全无从排查。 */
+    wsAlive = false;
+    $("offline").classList.add("show");
+    addBlock("error", "连接已断开，请刷新页面重新连接");
+    setBusy(false);
+  };
 }
 
 function handle(e) {
@@ -669,7 +692,18 @@ function setBusy(v) {
 function send() {
   const box = $("input");
   const text = box.value.trim();
-  if (!text || busy || !ws || ws.readyState !== 1) return;
+  if (!text) return;                       // 空输入，静默忽略是合理的
+  /* 下面几种失败必须说明原因。以前一律静默 return，用户看到的就是
+     "打了字、按了回车、毫无反应"，连从哪查起都不知道。 */
+  if (!ws || ws.readyState !== 1) {
+    $("offline").classList.add("show");
+    addBlock("error", "消息没有发出：与后端的连接已断开，请刷新页面。");
+    return;
+  }
+  if (busy) {
+    addBlock("notice", "! 上一轮任务还在进行中，请等它结束。");
+    return;
+  }
   addBlock("user", text);
   todoCard = null;
   ws.send(JSON.stringify({ type: "user_input", text }));
