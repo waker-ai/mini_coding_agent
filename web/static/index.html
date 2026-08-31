@@ -459,6 +459,21 @@ function renderDiff(text) {
   return frag;
 }
 
+/* 切换工作目录 = 换了一个项目，后端会重建 Agent 并清空历史。
+   界面必须跟着重置，否则屏幕上留着的是"模型已经不记得"的对话，
+   而且待办卡片、上下文进度条都还是上一个项目的旧值。 */
+function resetConversationUI() {
+  stream.textContent = "";
+  todoCard = null;
+  streamingEl = null;
+  streamingRaw = "";
+  lastTool = null;
+  $("ctxBar").querySelector("i").style.width = "0%";
+  $("ctxBar").classList.remove("warn");
+  $("ctxText").textContent = "0 / 0";
+  setBusy(false);
+}
+
 /* ---------- 文件树 ---------- */
 async function loadTree() {
   const box = $("tree");
@@ -567,7 +582,8 @@ function handle(e) {
       break;
 
     case "workspace_changed":
-      addBlock("notice", "! 工作目录已切换到 " + e.workspace + "，对话历史已重置");
+      resetConversationUI();
+      addBlock("notice", "! 已切换到新的工作目录，这是一个全新的对话\n" + e.workspace);
       break;
 
     case "text":
