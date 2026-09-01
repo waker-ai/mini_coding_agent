@@ -122,6 +122,8 @@
     transition: width .35s ease, background .35s ease;
   }
   .bar.warn > i { background: linear-gradient(90deg, var(--gold), #F2D9A6); }
+  .bar.working > i { animation: breathe 1.2s ease-in-out infinite; }
+  @keyframes breathe { 0%, 100% { opacity: 1; } 50% { opacity: .28; } }
 
   .offline {
     display: none;
@@ -195,6 +197,19 @@
     color: var(--dim); font-size: 12.5px;
     border-top: 1px solid var(--border-soft); padding-top: 9px;
   }
+  /* 压缩期间的占位块。这段等待里 agent 一个事件都不产生，
+     界面上没有一个转着的东西就和卡死无从分辨。 */
+  .msg.working {
+    display: flex; align-items: center; gap: 9px;
+    color: var(--nju-lavender); font-size: 13.5px;
+  }
+  .msg.working::before {
+    content: ""; flex: none; width: 11px; height: 11px; border-radius: 50%;
+    border: 2px solid rgba(199,155,216,.26);
+    border-top-color: var(--nju-lavender);
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
   .todos {
     background: var(--panel);
@@ -391,6 +406,7 @@
 const $ = (id) => document.getElementById(id);
 const stream = $("stream");
 let ws, streamingEl = null, streamingRaw = "", busy = false, lastTool = null;
+let compacting = false, compactingEl = null;
 let wsAlive = false;
 let pickerPath = "";
 
@@ -483,6 +499,8 @@ function resetConversationUI() {
   $("ctxBar").querySelector("i").style.width = "0%";
   $("ctxBar").classList.remove("warn");
   $("ctxText").textContent = "0 / 0";
+  compactingEl = null;   // stream 已经清空，占位块跟着没了，只需丢掉引用
+  setCompacting(false);
   setBusy(false);
 }
 
@@ -590,6 +608,7 @@ function connect() {
     $("offline").classList.add("show");
     addBlock("error", "连接已断开，请刷新页面重新连接");
     setBusy(false);
+    setCompacting(false);
   };
 }
 
@@ -662,6 +681,19 @@ function handle(e) {
       break;
     }
 
+    case "compact_start":
+      setCompacting(true);
+      /* 把耗时和原因都写出来。用户点完按钮什么都没发生的那十几秒里，
+         "它在等模型写摘要"和"它挂了"必须一眼能分开。 */
+      compactingEl = addBlock(
+        "working", "正在压缩上下文…（要额外调用一次模型写摘要，通常十几秒）");
+      break;
+
+    case "compact_end":
+      // 压缩成功与否由 agent 自己发的 notice 说明，这里只负责收掉占位块
+      setCompacting(false);
+      break;
+
     case "approval_request":
       $("dlgTitle").textContent = e.title;
       $("dlgBody").textContent = "";
@@ -682,12 +714,25 @@ function handle(e) {
 }
 
 /* ---------- 交互 ---------- */
-function setBusy(v) {
-  busy = v;
-  $("sendBtn").disabled = v;
-  $("input").disabled = v;
-  $("pickBtn").disabled = v;
-  if (!v) $("input").focus();
+/* 两种后台状态：跑任务、压缩上下文。两者都在改写同一份对话历史，因此互斥，
+   而且都要挡住输入。控件的禁用状态统一在这里算——让两处各自 disable，
+   先结束的那个会把另一个还需要的锁一并解开。 */
+function syncControls() {
+  const locked = busy || compacting;
+  $("sendBtn").disabled = locked;
+  $("input").disabled = locked;
+  $("pickBtn").disabled = locked;
+  $("compactBtn").disabled = locked;
+  $("resumeBtn").disabled = locked;   // 它点一下就把自己藏了，被拒绝的话用户就没得点了
+  $("compactBtn").textContent = compacting ? "压缩中…" : "压缩上下文";
+  $("ctxBar").classList.toggle("working", compacting);
+  if (!locked) $("input").focus();
+}
+function setBusy(v) { busy = v; syncControls(); }
+function setCompacting(v) {
+  compacting = v;
+  if (!v && compactingEl) { compactingEl.remove(); compactingEl = null; }
+  syncControls();
 }
 function send() {
   const box = $("input");
@@ -702,6 +747,10 @@ function send() {
   }
   if (busy) {
     addBlock("notice", "! 上一轮任务还在进行中，请等它结束。");
+    return;
+  }
+  if (compacting) {
+    addBlock("notice", "! 上下文正在压缩，请等它结束。");
     return;
   }
   addBlock("user", text);
@@ -726,7 +775,17 @@ document.querySelectorAll("#overlay .foot button").forEach((btn) => {
   };
 });
 $("modeSel").onchange = (ev) => ws.send(JSON.stringify({ type: "set_mode", mode: ev.target.value }));
-$("compactBtn").onclick = () => ws.send(JSON.stringify({ type: "compact" }));
+$("compactBtn").onclick = () => {
+  // 和 send() 同一个道理：不能静默失败，连接断了要说
+  if (!ws || ws.readyState !== 1) {
+    $("offline").classList.add("show");
+    addBlock("error", "压缩没有触发：与后端的连接已断开，请刷新页面。");
+    return;
+  }
+  if (busy || compacting) return;   // 此时按钮本来就是禁用的，这里只是兜底
+  setCompacting(true);              // 立刻禁用，不等服务端回包——那一瞬间也点得进第二下
+  ws.send(JSON.stringify({ type: "compact" }));
+};
 $("resumeBtn").onclick = () => {
   ws.send(JSON.stringify({ type: "resume" }));
   $("resumeBtn").style.display = "none";

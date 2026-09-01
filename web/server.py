@@ -332,9 +332,25 @@ def create_app(workspace: Path, mode: PermissionMode) -> FastAPI:
 
         pump_task = asyncio.create_task(pump())
         worker: threading.Thread | None = None
+        compactor: threading.Thread | None = None
 
         def busy() -> bool:
             return worker is not None and worker.is_alive()
+
+        def compacting() -> bool:
+            return compactor is not None and compactor.is_alive()
+
+        def occupied() -> str:
+            """后台有没有正在跑的活。空串表示空闲，否则是可以直接展示的拒绝理由。
+
+            跑任务和压缩都在改写同一份 history，必须互斥：并发跑两个的话
+            消息列表会被同时增删，坏掉的是历史本身，事后无从恢复。
+            """
+            if busy():
+                return "上一轮任务还在进行中"
+            if compacting():
+                return "上下文正在压缩中"
+            return ""
 
         def run_turn(text: str) -> None:
             """在独立线程里跑完整轮任务，结束后回报统计。"""
@@ -362,6 +378,24 @@ def create_app(workspace: Path, mode: PermissionMode) -> FastAPI:
                     }
                 )
 
+        def run_compact() -> None:
+            """在独立线程里做手动压缩。
+
+            压缩要额外调一次模型写摘要，慢的时候十几秒，期间 agent 不产生任何
+            事件——界面上就是点完按钮什么都不动。所以这里在两端各补一个事件，
+            让前端有东西可显示、也有明确的时机把按钮解禁。
+            """
+            try:
+                holder["agent"].compact()
+            except Exception as exc:  # noqa: BLE001 - 线程里的异常必须自己兜住
+                reporter.emit(
+                    {"type": "error", "message": f"压缩失败：{type(exc).__name__}: {exc}"}
+                )
+            finally:
+                # 无论成功、失败还是没压成，这条都必须发出去，
+                # 否则前端的按钮会永远停在"压缩中…"
+                reporter.emit({"type": "compact_end"})
+
         try:
             while True:
                 payload = await ws.receive_json()
@@ -371,8 +405,11 @@ def create_app(workspace: Path, mode: PermissionMode) -> FastAPI:
                     text = (payload.get("text") or "").strip()
                     if not text:
                         continue
-                    if busy():
-                        await ws.send_json({"type": "notice", "message": "上一轮任务还在进行中"})
+                    reason = occupied()
+                    if reason:
+                        await ws.send_json(
+                            {"type": "notice", "message": f"{reason}，请等它结束"}
+                        )
                         continue
                     worker = threading.Thread(target=run_turn, args=(text,), daemon=True)
                     worker.start()
@@ -393,9 +430,10 @@ def create_app(workspace: Path, mode: PermissionMode) -> FastAPI:
                 elif kind == "set_workspace":
                     # 切换工作目录要重建 Agent：系统提示词里带着目录概览，
                     # 历史也是围绕旧目录展开的，继续沿用只会误导模型。
-                    if busy():
+                    reason = occupied()
+                    if reason:
                         await ws.send_json(
-                            {"type": "notice", "message": "任务进行中，无法切换工作目录"}
+                            {"type": "notice", "message": f"{reason}，无法切换工作目录"}
                         )
                         continue
                     raw = (payload.get("path") or "").strip()
@@ -417,12 +455,31 @@ def create_app(workspace: Path, mode: PermissionMode) -> FastAPI:
                     await send_ready()
 
                 elif kind == "resume":
-                    if not busy():
-                        holder["agent"].restore_session()
+                    reason = occupied()
+                    if reason:
+                        await ws.send_json(
+                            {"type": "notice", "message": f"{reason}，无法恢复上次会话"}
+                        )
+                        continue
+                    holder["agent"].restore_session()
 
                 elif kind == "compact":
-                    if not busy():
-                        threading.Thread(target=holder["agent"].compact, daemon=True).start()
+                    # 已经在压缩了就只提示，不再起第二个线程——两个线程同时改
+                    # history 会把消息列表搅烂。此时也不发 compact_end：
+                    # 正在跑的那次结束时自会发，提前发出去按钮就被误解禁了。
+                    if compacting():
+                        await ws.send_json(
+                            {"type": "notice", "message": "上下文正在压缩中，请等它结束"}
+                        )
+                    elif busy():
+                        await ws.send_json(
+                            {"type": "notice", "message": "上一轮任务还在进行中，暂时无法压缩"}
+                        )
+                        await ws.send_json({"type": "compact_end"})
+                    else:
+                        await ws.send_json({"type": "compact_start"})
+                        compactor = threading.Thread(target=run_compact, daemon=True)
+                        compactor.start()
 
         except WebSocketDisconnect:
             pass
