@@ -1,6 +1,7 @@
 # mini coding agent
 
-一个从零手写的编程智能体：通过与大语言模型交互，自主读写文件、执行命令来完成编程任务。
+一个从零手写的编程智能体：通过与大语言模型交互，自主读写文件、执行命令、抓取网页，
+来完成交给它的编程任务。共 8 个工具，终端与浏览器两套界面共用同一内核。
 
 未使用任何 agent 框架 / SDK。对话历史管理、工具定义与本地执行、模型输出解析、
 循环终止条件、错误处理全部为自行实现，仅使用 `openai` 作为 HTTP 客户端库
@@ -63,7 +64,8 @@ agent/
     ├── editing.py      write_file / edit_file（写前展示 diff 并请求确认）
     ├── search.py       grep（纯 Python 实现，跨平台）
     ├── shell.py        run_command（高危命令硬拦截 + 用户确认）
-    └── web.py          web_fetch（只读抓取公开网页，拒绝内网地址）
+    ├── web.py          web_fetch（只读抓取公开网页，拒绝内网地址）
+    └── planning.py     todo_write（多步任务拆解，同时最多一项进行中）
 
 web/                    可选的浏览器界面（不装 fastapi 也不影响终端使用）
 ├── server.py           FastAPI + WebSocket，内含 WebReporter
