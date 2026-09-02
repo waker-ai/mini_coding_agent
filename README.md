@@ -62,7 +62,8 @@ agent/
     ├── filesystem.py   read_file / list_dir
     ├── editing.py      write_file / edit_file（写前展示 diff 并请求确认）
     ├── search.py       grep（纯 Python 实现，跨平台）
-    └── shell.py        run_command（高危命令硬拦截 + 用户确认）
+    ├── shell.py        run_command（高危命令硬拦截 + 用户确认）
+    └── web.py          web_fetch（只读抓取公开网页，拒绝内网地址）
 
 web/                    可选的浏览器界面（不装 fastapi 也不影响终端使用）
 ├── server.py           FastAPI + WebSocket，内含 WebReporter
@@ -71,9 +72,10 @@ web/                    可选的浏览器界面（不装 fastapi 也不影响�
 demo/
 └── setup_demo.py       生成/重置演示靶子（一个带真实 bug 的小项目）
 
-tests/                  37 个测试，均用桩替换 LLM，不联网不花钱
+tests/                  56 个测试，均用桩替换 LLM，不联网不花钱
 ├── run_all.py          一次跑完全部
 ├── test_tools.py       沙箱 / 凭据防护 / 权限闸门 / dispatch 兜错
+├── test_web.py         web_fetch 的协议限制、SSRF 防护、正文提取
 ├── test_history.py     上下文压缩的切割点
 ├── test_loop.py        三层终止条件与历史一致性
 └── test_session.py     会话存档往返与 todo_write 校验
@@ -87,11 +89,14 @@ tests/                  37 个测试，均用桩替换 LLM，不联网不花钱
 python tests/run_all.py
 ```
 
-37 个测试，全部不联网、不消耗 token（LLM 用桩替换）：
+56 个测试，全部不联网、不消耗 token（LLM 用桩替换）：
 
 - `test_tools.py` —— 路径沙箱、凭据文件防护、三档权限闸门、dispatch 兜错。
   这些是"说了算数"的约束，一旦悄悄失效，后果是密钥泄露或写坏工作目录外的
   文件，而且不会有任何报错提醒你。
+- `test_web.py` —— web_fetch 的协议限制与 SSRF 防护（拒绝 file://、拒绝内网
+  与回环地址、重定向逐跳校验），以及 URL 编码和 HTML 正文提取。同样离线跑：
+  依赖外部站点的测试早晚会因为对方改版而变成假警报。
 - `test_history.py` —— 上下文压缩的切割点。最容易悄悄切坏的部分：一旦切断
   tool_call 与 tool 结果的配对，请求会被服务端 400 拒绝，且报错不指向压缩逻辑。
 - `test_loop.py` —— 三层终止条件，以及每个出口退出时历史都必须保持完整
@@ -120,3 +125,4 @@ python tests/eval_compaction.py
 - [x] `todo_write` 规划工具：多步任务自动拆解并显示进度
 - [x] 文件树 + 工作目录选择器 + 文件预览
 - [x] 凭据类文件（.env / *.key / id_rsa 等）一律拒绝读写，grep 同样挡住
+- [x] `web_fetch` 联网抓取：只读、只走 http(s)、拒绝内网地址，重定向逐跳校验

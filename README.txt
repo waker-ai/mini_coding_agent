@@ -12,7 +12,7 @@ https://github.com/waker-ai/mini_coding_agent
 
 常用参数：-C 指定工作目录，--mode 选权限模式（ask 逐次确认 / auto 全自动 /
 readonly 只读），--resume 接着上次的对话继续。
-运行测试：python tests/run_all.py —— 37 个用例，模型全部用桩替换，
+运行测试：python tests/run_all.py —— 56 个用例，模型全部用桩替换，
 不联网也不消耗额度。
 
 【特色功能】
